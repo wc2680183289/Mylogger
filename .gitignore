@@ -1,0 +1,12 @@
+build/
+cmake-build-*/
+out/
+
+.vscode/
+.idea/
+*.user
+.DS_Store
+
+example/test_mmap.txt
+*.0
+*.a
