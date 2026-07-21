@@ -7,7 +7,6 @@ add_library(logger STATIC
     utils/sys_util.cc
     utils/sys_util_linux.cc
     context/thread_pool.cpp
-    context/executor.cpp
 )
 
 target_include_directories(logger PUBLIC
