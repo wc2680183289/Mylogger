@@ -1,4 +1,6 @@
 add_subdirectory(third_party/fmt)
+add_subdirectory(third_party/zlib)
+add_subdirectory(third_party/zstd/build/cmake zstd)
 
 add_library(logger STATIC
     mmap/mmap_aux.cpp
@@ -8,6 +10,14 @@ add_library(logger STATIC
     utils/sys_util_linux.cc
     context/thread_pool.cpp
     context/executor.cpp
+    sinks/console_sink.cpp
+    formatter/default_formatter.cpp
+    log_handle.cpp
+    log_msg.cpp
+    compress/zlib_compress.cpp
+    compress/zstd_compress.cpp
+    crypt/crypt.cpp
+    crypt/aes_crypt.cpp
 )
 
 target_include_directories(logger PUBLIC
@@ -15,6 +25,13 @@ target_include_directories(logger PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/mmap
     ${CMAKE_CURRENT_SOURCE_DIR}/utils
     ${CMAKE_CURRENT_SOURCE_DIR}/context
+    ${CMAKE_CURRENT_SOURCE_DIR}/sinks
+    ${CMAKE_CURRENT_SOURCE_DIR}/formatter
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zlib/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/compress
+    ${CMAKE_CURRENT_SOURCE_DIR}/crypt
 )
 
-target_link_libraries(logger PUBLIC pthread fmt::fmt)
+find_package(OpenSSL REQUIRED)
+
+target_link_libraries(logger PUBLIC pthread fmt::fmt zlib libzstd_static OpenSSL::Crypto)
