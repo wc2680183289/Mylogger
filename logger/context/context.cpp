@@ -19,12 +19,14 @@ private:
 };
 
 Executor* Context::GetExecutor() {
-    return executor_manager_.GetExecutor();
+    return executor_manager_->GetExecutor();
 }
 
 TaskRunnerTag Context::NewTaskRunner(TaskRunnerTag tag) {
-    return executor_manager_.NewTaskRunner(tag);
+    return executor_manager_->NewTaskRunner(tag);
 }
+
+Context::Context() : executor_manager_(std::make_unique<ExecutorManager>()) {}
 
 }
 }
