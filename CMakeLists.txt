@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_subdirectory(logger)
 add_subdirectory(example)
+add_subdirectory(decode)
 
 enable_testing()
 find_package(GTest CONFIG REQUIRED)

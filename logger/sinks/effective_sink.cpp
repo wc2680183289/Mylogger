@@ -28,6 +28,7 @@ EffectiveSink::EffectiveSink(Conf conf) : conf_(std::move(conf)) {
     LOG_INFO("EffectiveSink client_pub_key size = {}",client_pub_key.size());
     auto ser_pub_key = crypt::HexKeyToBinary(conf_.pub_key);
     auto shared_secret = crypt::GenECDHSharedSecret(client_key, ser_pub_key);//用己方私钥和对方公钥算出AES所需的共享密钥
+    std::cout << "EffectiveSink::EffectiveSink : shared_secret = " << logger::crypt::BinaryKeyToHex(shared_secret) << "\n";
     crypt_ = std::make_unique<crypt::AESCrypt>(shared_secret);
     compress_ = std::make_unique<compress::ZstdCompress>();
     master_cache_ = std::make_unique<MMapAux>(conf_.dir / "master.cache");
