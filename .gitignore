@@ -10,5 +10,6 @@ out/
 logger/third_party/protobuf/
 
 example/test_mmap.txt
+cppcheck_report.txt
 *.0
 *.a
