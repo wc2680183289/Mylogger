@@ -69,49 +69,96 @@ void EffectiveSink::SwapCache_() {
 }
 
 void EffectiveSink::Flush() {
-    PrepareToFile_();
-    WAIT_TASK_IDLE(task_runner_);
+    // PrepareToFile_();
+    // WAIT_TASK_IDLE(task_runner_);
 
-    if(is_slave_free_.load()){
-        is_slave_free_.store(false);
-        SwapCache_();
-    } 
-    PrepareToFile_();
+    // if(is_slave_free_.load()){
+    //     is_slave_free_.store(false);
+    //     SwapCache_();
+    // } 
+    // PrepareToFile_();
+    // WAIT_TASK_IDLE(task_runner_);
+    POST_TASK(task_runner_, [this]() {
+        if(is_slave_free_.load()) {
+            is_slave_free_.store(false);
+            SwapCache_();
+        }
+        CacheToFile_();
+    });
     WAIT_TASK_IDLE(task_runner_);
 }
 
-void EffectiveSink::Log(const LogMsg& msg) {
-    static thread_local MemoryBuf buf;
-    formatter_->Format(msg, &buf);
-
-    if(master_cache_->Empty()){
+void EffectiveSink::ProcessLog_(std::string formatted) {
+    //std::lock_guard<std::mutex>lk(mtx_);
+    if(master_cache_->Empty()) {
         compress_->ResetStream();
     }
 
-    {   //先压缩后加密
+    {
         std::lock_guard<std::mutex>lk(mtx_);
-        compressed_buf_.resize(compress_->CompressedBound(buf.size()));
-        size_t compressed_size = compress_->Compress(buf.data(), buf.size(), compressed_buf_.data(), compressed_buf_.size());
+        compressed_buf_.resize(compress_->CompressedBound(formatted.size()));
+        size_t compressed_size = compress_->Compress(formatted.data(), formatted.size(), compressed_buf_.data(), compressed_buf_.size());
         if(compressed_size == 0) {
             LOG_ERROR("EffectiveSink::Log : compress failed");
             return;
         }
         encryped_buf_.clear();
         encryped_buf_.resize(compressed_size + 16);
-        crypt_->Encrypt(compressed_buf_.data(), compressed_buf_.size(), encryped_buf_);
+        crypt_->Encrypt(compressed_buf_.data(), compressed_size, encryped_buf_);
         if(encryped_buf_.empty()) {
             LOG_ERROR("EffectiveSink::Log : encrypt failed");
             return;
         }
         WriteToCache_(encryped_buf_.data(), encryped_buf_.size());
     }
+
     if(NeedCacheToFile_()){
         if(is_slave_free_.load()){
             is_slave_free_.store(false);
             SwapCache_();
-        }
-        PrepareToFile_();
+        } 
+        CacheToFile_();
     }
+}
+
+void EffectiveSink::Log(const LogMsg& msg) {
+    static thread_local MemoryBuf buf;
+    formatter_->Format(msg, &buf);
+
+    std::string payload(buf.data(), buf.size());
+    auto task = [this, payload = std::move(payload)]() mutable {
+        ProcessLog_(std::move(payload));
+    };
+    POST_TASK(task_runner_, task);
+
+    // if(master_cache_->Empty()){
+    //     compress_->ResetStream();
+    // }
+
+    // {   //先压缩后加密
+    //     std::lock_guard<std::mutex>lk(mtx_);
+    //     compressed_buf_.resize(compress_->CompressedBound(buf.size()));
+    //     size_t compressed_size = compress_->Compress(buf.data(), buf.size(), compressed_buf_.data(), compressed_buf_.size());
+    //     if(compressed_size == 0) {
+    //         LOG_ERROR("EffectiveSink::Log : compress failed");
+    //         return;
+    //     }
+    //     encryped_buf_.clear();
+    //     encryped_buf_.resize(compressed_size + 16);
+    //     crypt_->Encrypt(compressed_buf_.data(), compressed_buf_.size(), encryped_buf_);
+    //     if(encryped_buf_.empty()) {
+    //         LOG_ERROR("EffectiveSink::Log : encrypt failed");
+    //         return;
+    //     }
+    //     WriteToCache_(encryped_buf_.data(), encryped_buf_.size());
+    // }
+    // if(NeedCacheToFile_()){
+    //     if(is_slave_free_.load()){
+    //         is_slave_free_.store(false);
+    //         SwapCache_();
+    //     }
+    //     PrepareToFile_();
+    // }
 }
 
 void EffectiveSink::SetFormatter(std::unique_ptr<Formatter> formatter) {}

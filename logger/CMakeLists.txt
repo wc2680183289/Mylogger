@@ -17,6 +17,7 @@ add_library(logger STATIC
     formatter/default_formatter.cpp
     formatter/effective_formatter.cpp
     log_handle.cpp
+    log_factory.cpp
     log_msg.cpp
     compress/zlib_compress.cpp
     compress/zstd_compress.cpp

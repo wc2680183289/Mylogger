@@ -10,4 +10,6 @@ add_subdirectory(decode)
 
 enable_testing()
 find_package(GTest CONFIG REQUIRED)
+find_package(benchmark CONFIG REQUIRED)
 add_subdirectory(tests)
+add_subdirectory(bench)

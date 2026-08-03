@@ -71,6 +71,8 @@ private:
 
     void EliminateFiles_();
 
+    void ProcessLog_(std::string formatted);
+
 private:
     Conf conf_;
     std::mutex mtx_;
