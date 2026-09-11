@@ -1,6 +1,9 @@
 #include "mmap_aux.h"
 #include "file_util.h"
 #include "sys_util.h"
+#include "internal_log.h"
+
+#include <sys/mman.h>
 
 #include <cstring>
 #include <algorithm>
@@ -11,8 +14,18 @@ namespace logger{
     MMapAux::MMapAux(fpath file_path) : file_path_(std::move(file_path)), handle_(nullptr), capacity_(0){
         size_t file_size = fs::GetFileSize(file_path_);
         size_t init_size = std::max(file_size, kDefaultCapacity);
-        Reserve_(init_size);
+        if (!Reserve_(init_size)) {
+            // Stay invalid: Push/Data/Size become no-ops via IsValid_().
+            LOG_ERROR("MMapAux: initial Reserve_ failed, path={}, init_size={}", file_path_.string(), init_size);
+            handle_ = nullptr;
+            capacity_ = 0;
+            return;
+        }
         Init_();
+    }
+
+    MMapAux::~MMapAux() {
+        UnMap_();
     }
     
     static size_t GetValidCapacity_(size_t size){
@@ -20,19 +33,28 @@ namespace logger{
         return (size + page_size - 1)/page_size * page_size;
     }
     
-    void MMapAux::Reserve_(size_t new_size){
+    bool MMapAux::Reserve_(size_t new_size){
         if(new_size <= capacity_){
-            return;
+            return true;
         }
         new_size = GetValidCapacity_(new_size);
-    
-        UnMap_();
-        TryMap_(new_size);
+
+        void* new_handle = nullptr;
+        if (!MapFile_(new_size, &new_handle)) {
+            // Keep existing mapping (if any) intact.
+            return false;
+        }
+
+        if (IsMapped_()) {
+            munmap(handle_, capacity_);
+        }
+        handle_ = new_handle;
         capacity_ = new_size;
+        return true;
     }
     
     MMapAux::MmapHeader* MMapAux::Header_() const {
-        if(!handle_){
+        if(!IsMapped_()){
             return nullptr;
         }
         if(capacity_ < sizeof(MmapHeader)){
@@ -52,16 +74,16 @@ namespace logger{
         }
     }
     
-    void MMapAux::EnsureCapacity_(size_t new_size){
+    bool MMapAux::EnsureCapacity_(size_t new_size){
         size_t real_size = new_size + sizeof(MmapHeader);
         if(real_size <= capacity_){
-            return;
+            return true;
         }
         auto new_capacity = capacity_;
         while(new_capacity < real_size){
             new_capacity += GetPageSize();
         }
-        Reserve_(new_capacity);
+        return Reserve_(new_capacity);
     }
     
     bool MMapAux::IsValid_() const {
@@ -77,7 +99,10 @@ namespace logger{
         if(!IsValid_()){
             return;
         }
-        EnsureCapacity_(new_size);
+        if (!EnsureCapacity_(new_size)) {
+            LOG_ERROR("MMapAux::Resize: EnsureCapacity_ failed, path={}, new_size={}", file_path_.string(), new_size);
+            return;
+        }
         Header_()->size = new_size;
     }
     
@@ -108,8 +133,17 @@ namespace logger{
         }
     
         size_t new_size = Size() + size;
-        EnsureCapacity_(new_size);
-        memcpy(Data() + Size(), data, size);
+        if (!EnsureCapacity_(new_size)) {
+            LOG_ERROR("MMapAux::Push: EnsureCapacity_ failed, path={}, cur_size={}, need={}",
+                      file_path_.string(), Size(), new_size);
+            return;
+        }
+        uint8_t* dst = Data();
+        if (!dst) {
+            LOG_ERROR("MMapAux::Push: Data() is null after EnsureCapacity_, path={}", file_path_.string());
+            return;
+        }
+        memcpy(dst + Size(), data, size);
         Header_()->size = new_size;
     }
     
@@ -117,6 +151,10 @@ namespace logger{
         if(!IsValid_()){
             return 0;
         }
-        return static_cast<double>(Size() / Capacity_() - sizeof(MmapHeader));
+        size_t denom = Capacity_() - sizeof(MmapHeader);
+        if (denom == 0) {
+            return 0;
+        }
+        return static_cast<double>(Size()) / static_cast<double>(denom);
     }
 }

@@ -10,7 +10,7 @@ public:
 
     explicit MMapAux(fpath file_path);
 
-    ~MMapAux() = default;
+    ~MMapAux();
 
     MMapAux(const MMapAux&) = delete;
 
@@ -37,17 +37,22 @@ private:
     };
     
 private:
-    void Reserve_(size_t new_size);
+    bool Reserve_(size_t new_size);
 
-    void EnsureCapacity_(size_t new_size);
+    bool EnsureCapacity_(size_t new_size);
 
     size_t Capacity_() const noexcept { return capacity_ ;}
+
+    // Map file to a new region without touching the current handle_/capacity_.
+    bool MapFile_(size_t capacity, void** out_handle);
 
     bool TryMap_(size_t capacity);
 
     void UnMap_();
 
     void Sync_();
+
+    bool IsMapped_() const;
 
     bool IsValid_() const;
 
