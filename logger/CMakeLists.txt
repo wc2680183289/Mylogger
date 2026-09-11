@@ -42,4 +42,6 @@ target_include_directories(logger PUBLIC
 
 find_package(OpenSSL REQUIRED)
 
+target_compile_definitions(logger PUBLIC ENABLE_LOG)
+
 target_link_libraries(logger PUBLIC pthread fmt::fmt zlib libzstd_static OpenSSL::Crypto protobuf)
