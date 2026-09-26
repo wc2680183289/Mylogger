@@ -14,6 +14,7 @@ add_library(logger STATIC
     context/context.cpp
     sinks/console_sink.cpp
     sinks/effective_sink.cpp
+    sinks/sharded_effective_sink.cpp
     formatter/default_formatter.cpp
     formatter/effective_formatter.cpp
     log_handle.cpp
