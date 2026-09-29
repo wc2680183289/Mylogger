@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <string>
 
@@ -67,7 +68,7 @@ public:
 
     explicit EffectiveSink(Conf conf);
 
-    ~EffectiveSink() override = default;
+    ~EffectiveSink() override;
 
     void Log(const LogMsg& msg) override;
 
@@ -100,6 +101,11 @@ private:
 
     bool QueueFull_() const;
 
+    // Keep log file open across CacheToFile_ calls; reopen only on rotate/path change.
+    void CloseLogFile_();
+
+    bool EnsureLogFileOpen_(const std::filesystem::path& path);
+
 private:
     Conf conf_;
     std::mutex mtx_;
@@ -110,6 +116,8 @@ private:
     std::unique_ptr<MMapAux> master_cache_;
     std::unique_ptr<MMapAux> slave_cache_;
     std::filesystem::path log_file_path_;
+    std::ofstream log_ofs_;
+    std::filesystem::path opened_log_path_;
     std::string client_pub_key_;
     std::string compressed_buf_;
     std::string encryped_buf_;

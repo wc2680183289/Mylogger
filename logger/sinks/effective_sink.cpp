@@ -61,6 +61,32 @@ EffectiveSink::EffectiveSink(Conf conf) : conf_(std::move(conf)) {
     POST_REPEATED_TASK(task_runner_, [this](){ EliminateFiles_(); }, conf_.interval, -1);
 }
 
+EffectiveSink::~EffectiveSink() {
+    CloseLogFile_();
+}
+
+void EffectiveSink::CloseLogFile_() {
+    if (log_ofs_.is_open()) {
+        log_ofs_.flush();
+        log_ofs_.close();
+    }
+    opened_log_path_.clear();
+}
+
+bool EffectiveSink::EnsureLogFileOpen_(const std::filesystem::path& path) {
+    if (log_ofs_.is_open() && opened_log_path_ == path) {
+        return true;
+    }
+    CloseLogFile_();
+    log_ofs_.open(path, std::ios::binary | std::ios::app);
+    if (!log_ofs_.is_open()) {
+        LOG_ERROR("EffectiveSink::EnsureLogFileOpen_: open failed, path={}", path.string());
+        return false;
+    }
+    opened_log_path_ = path;
+    return true;
+}
+
 void EffectiveSink::SwapCache_() {
     std::lock_guard<std::mutex>lk(mtx_);
     std::swap(master_cache_, slave_cache_);
@@ -230,13 +256,21 @@ void EffectiveSink::CacheToFile_() {
 
     {
         auto file_path = GetFilePath_();
+        if (!EnsureLogFileOpen_(file_path)) {
+            LOG_ERROR("EffectiveSink::CacheToFile_: ensure open failed, path={}", file_path.string());
+            return;
+        }
         detail::ChunkHeader chunk_header;
         chunk_header.size = slave_cache_->Size();
         memcpy(chunk_header.pub_key, client_pub_key_.data(), client_pub_key_.size());
-        std::ofstream ofs(file_path, std::ios::binary | std::ios::app);
-        ofs.write(reinterpret_cast<char*>(&chunk_header), sizeof(chunk_header));
-        ofs.write(reinterpret_cast<char*>(slave_cache_->Data()), slave_cache_->Size());
-        ofs.close();
+        log_ofs_.write(reinterpret_cast<char*>(&chunk_header), sizeof(chunk_header));
+        log_ofs_.write(reinterpret_cast<char*>(slave_cache_->Data()), slave_cache_->Size());
+        log_ofs_.flush();
+        if (!log_ofs_) {
+            LOG_ERROR("EffectiveSink::CacheToFile_: write failed, path={}", file_path.string());
+            CloseLogFile_();
+            return;
+        }
     }
     slave_cache_->Clear();
     is_slave_free_.store(true);
@@ -255,6 +289,10 @@ std::filesystem::path EffectiveSink::GetFilePath_() {
     if (log_file_path_.empty()) {
         log_file_path_ = GetDateTimePath().string() + ".log";
     } else {
+        // Flush so on-disk size reflects buffered writes of the kept-open stream.
+        if (log_ofs_.is_open() && opened_log_path_ == log_file_path_) {
+            log_ofs_.flush();
+        }
         auto file_size = fs::GetFileSize(log_file_path_);
         bytes single_bytes = space_cast<bytes>(conf_.single_size);
         if(file_size > single_bytes.count()) {
@@ -296,6 +334,11 @@ void EffectiveSink::EliminateFiles_() {
         used_bytes += fs::GetFileSize(file);
         if(used_bytes > total_bytes) {
             LOG_INFO("EffectiveSink::EliminateFiles_: remove file = {}", file.string());
+            // Do not unlink the file we currently hold open.
+            if (log_ofs_.is_open() && opened_log_path_ == file) {
+                CloseLogFile_();
+                log_file_path_.clear();
+            }
             std::filesystem::remove(file);
         }
     }

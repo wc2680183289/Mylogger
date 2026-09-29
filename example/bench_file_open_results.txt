@@ -1,0 +1,20 @@
+# file keep-open: before/after (ENABLE_LOG off, Release, cache=1MB)
+# machine ~4c; e2e = write + Flush; drop always 0
+# cmd: ./build/example/bench_file_open
+
+## BEFORE (open+close each CacheToFile_)
+64B_p1         e2e=433335/s  burst=684715/s
+64B_p4         e2e=480380/s  burst=612515/s
+4KB_p1         e2e=184559/s  burst=184523/s
+4KB_p4         e2e=87850/s   burst=58037/s
+4KB_p4_rotate  e2e=154417/s  burst=145954/s
+
+## AFTER (keep ofstream open; reopen on rotate)
+64B_p1         e2e=526322/s  burst=806326/s   e2e ~1.21x
+64B_p4         e2e=534006/s  burst=623206/s   e2e ~1.11x
+4KB_p1         e2e=196921/s  burst=201887/s   e2e ~1.07x
+4KB_p4         e2e=198890/s  burst=112053/s   e2e ~2.26x
+4KB_p4_rotate  e2e=173858/s  burst=183573/s   e2e ~1.13x
+
+Note: 4KB_p4 before looked noisy/low; treat order-of-magnitude / direction as signal.
+Re-run locally to confirm: cmake --build build --target bench_file_open && ./build/example/bench_file_open
